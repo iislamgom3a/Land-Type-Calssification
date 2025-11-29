@@ -2,7 +2,7 @@ import os
 import tempfile
 import numpy as np
 import tifffile as tiff
-import tensorflow as pd  # specific import not needed if loading model directly, but keeping for env consistency
+import pandas as pd  # specific import not needed if loading model directly, but keeping for env consistency
 from tensorflow.keras.models import load_model
 from skimage.transform import resize
 from flask import Flask, request, jsonify, render_template
