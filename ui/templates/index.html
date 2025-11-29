@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Land Type Classifier</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div class="container">
+
+    <header>
+        <h1>Land Type Classifier</h1>
+        <p>Upload a .tif satellite image with 13 spectral bands.</p>
+    </header>
+
+    <div class="upload-section">
+        <form id="uploadForm">
+            <div class="file-input-wrapper">
+                <input type="file" id="fileInput" name="file" accept=".tif,.tiff" required>
+                <label for="fileInput" class="btn">Choose Satellite Image</label>
+                <span id="fileName">No file chosen</span>
+            </div>
+            <button type="submit" class="btn btn-primary">Analyze Image</button>
+        </form>
+    </div>
+
+    <!-- Loader -->
+    <div id="loader" class="hidden">
+        <div class="spinner"></div>
+        <p id="loadingText" class="hidden">Processing Bands...</p>
+    </div>
+
+    <!-- Error -->
+    <div id="errorMessage" class="error hidden"></div>
+
+    <!-- Results -->
+    <div id="results" class="results-grid hidden">
+
+        <!-- Image -->
+        <div class="card">
+            <h3 id="imgTitle" class="hidden">Satellite View (RGB)</h3>
+            <div id="imageBox" class="image-container hidden">
+                <img id="resultImage" src="">
+            </div>
+        </div>
+
+        <!-- Prediction -->
+        <div class="card">
+
+            <h3 id="predTitle" class="hidden">Prediction</h3>
+
+            <div id="predBox" class="prediction-box hidden">
+                <h2 id="predictedClass">--</h2>
+                <p>Confidence: <span id="confidenceScore">0%</span></p>
+            </div>
+
+            <hr id="confLine" class="hidden">
+
+            <h4 id="confTitle" class="hidden">Confidence Distribution</h4>
+
+            <div id="chartBox" class="chart-container hidden">
+                <canvas id="probChart"></canvas>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const form = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('fileInput');
+    const fileNameDisplay = document.getElementById('fileName');
+    const loader = document.getElementById('loader');
+    const results = document.getElementById('results');
+    const errorMsg = document.getElementById('errorMessage');
+    let chartInstance = null;
+
+    const toHide = [
+        'imgTitle','imageBox','predTitle','predBox',
+        'confLine','confTitle','chartBox','loadingText'
+    ];
+
+    function hideAll() {
+        toHide.forEach(id => document.getElementById(id).classList.add('hidden'));
+    }
+
+    hideAll();
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            fileNameDisplay.textContent = fileInput.files[0].name;
+            document.getElementById('loadingText').classList.remove('hidden');
+        }
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        hideAll();
+        results.classList.add('hidden');
+        errorMsg.classList.add('hidden');
+        loader.classList.remove('hidden');
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const response = await fetch('/predict', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Error');
+
+            document.getElementById('resultImage').src =
+                'data:image/png;base64,' + data.image_b64;
+
+            document.getElementById('predictedClass').textContent = data.class;
+            document.getElementById('confidenceScore').textContent =
+                (data.confidence * 100).toFixed(2) + '%';
+
+            renderChart(data.classes, data.probabilities);
+
+            loader.classList.add('hidden');
+
+            ['imgTitle','imageBox','predTitle','predBox',
+             'confLine','confTitle','chartBox'
+            ].forEach(id => document.getElementById(id).classList.remove('hidden'));
+
+            results.classList.remove('hidden');
+
+        } catch (err) {
+            loader.classList.add('hidden');
+            errorMsg.textContent = err.message;
+            errorMsg.classList.remove('hidden');
+        }
+    });
+
+    function renderChart(labels, data) {
+        const ctx = document.getElementById('probChart').getContext('2d');
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Probability',
+                    data,
+                    backgroundColor: 'rgba(54,162,235,0.6)',
+                    borderColor: 'rgba(54,162,235,1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                scales: { x: { beginAtZero: true, max: 1 } }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
+

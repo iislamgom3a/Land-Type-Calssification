@@ -1,12 +1,18 @@
-import streamlit as st
-from tensorflow.keras.models import load_model
-import numpy as np
-import pandas as pd
-import tifffile as tiff
-from skimage.transform import resize
-import tempfile
 import os
+import tempfile
+import numpy as np
+import tifffile as tiff
+import tensorflow as pd  # specific import not needed if loading model directly, but keeping for env consistency
+from tensorflow.keras.models import load_model
+from skimage.transform import resize
+from flask import Flask, request, jsonify, render_template
+from PIL import Image
+import io
+import base64
 
+app = Flask(__name__)
+
+# Configuration
 IMG_SIZE = (64, 64)
 CLASSES = [
     "AnnualCrop",
@@ -20,16 +26,18 @@ CLASSES = [
     "River",
     "SeaLake",
 ]
-
+MODEL_PATH = "../models/model.h5"
 
 # Load model
-@st.cache_resource
-def load_prediction_model():
-    model = load_model("models/model.h5")
-    return model
+try:
+    model = load_model(MODEL_PATH)
+    print("Model loaded successfully.")
+except Exception as e:
+    print(f"Error loading model: {e}")
+    model = None
 
 
-# Preprocessing
+# --- PREPROCESSING  ---
 def process_input(file_path):
     # Read 13-band image
     img = tiff.imread(file_path)
@@ -60,55 +68,77 @@ def get_rgb_view(img_array):
     return rgb
 
 
-# UI
-st.title("🌍 Land Type Classifier")
-st.write("Upload a **.tif** satellite image (13 bands) to classify the terrain.")
+# --- ROUTES ---
 
-model = load_prediction_model()
-uploaded_file = st.file_uploader("Choose a satellite image", type=["tif", "tiff"])
 
-if uploaded_file is not None:
-    # Save to temp file (because tifffile needs a path on disk)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".tif") as tmp:
-        tmp.write(uploaded_file.getvalue())
-        tmp_path = tmp.name
+@app.route("/")
+def index():
+    return render_template("index.html")
 
+
+@app.route("/predict", methods=["POST"])
+def predict():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    tmp_path = None
     try:
-        # Process
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tif") as tmp:
+            file.save(tmp.name)
+            tmp_path = tmp.name
+
+        # Process Input
         input_tensor, raw_img = process_input(tmp_path)
 
-        # Layout
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.subheader("Satellite View (RGB)")
-            rgb_img = get_rgb_view(raw_img)
-            st.image(rgb_img, clamp=True, use_container_width=True)
-            st.caption(f"Original Shape: {raw_img.shape}")
-
-        with col2:
-            st.subheader("Prediction")
-
-            if model == None:  # todo
-                st.warning("Model not loaded. Generating dummy data.")
-            else:
-                probs = model.predict(input_tensor)
-
-            top_idx = np.argmax(probs[0])
+        # Generate Prediction
+        if model:
+            probs = model.predict(input_tensor)[0]
+            top_idx = np.argmax(probs)
             top_class = CLASSES[top_idx]
-            confidence = probs[0][top_idx]
+            confidence = float(probs[top_idx])
 
-            st.success(f"**{top_class}**")
-            st.metric("Confidence", f"{confidence:.2%}")
+            # Convert probabilities to list for JSON
+            prob_list = probs.tolist()
+        else:
+            # Dummy response if model is missing
+            top_class = "Model Not Loaded"
+            confidence = 0.0
+            prob_list = [0.1] * 10
 
-        # chart
-        st.markdown("---")
-        st.subheader("Confidence Distribution")
-        df_chart = pd.DataFrame({"Class": CLASSES, "Probability": probs[0]})
-        st.bar_chart(df_chart.set_index("Class"))
+        # Generate RGB Image for Frontend
+        rgb_img = get_rgb_view(raw_img)
+
+        # Convert 0-1 float array to 0-255 uint8 for PNG conversion
+        rgb_uint8 = (rgb_img * 255).astype(np.uint8)
+        pil_img = Image.fromarray(rgb_uint8)
+
+        # Save to buffer
+        buff = io.BytesIO()
+        pil_img.save(buff, format="PNG")
+        img_b64 = base64.b64encode(buff.getvalue()).decode("utf-8")
+
+        return jsonify(
+            {
+                "class": top_class,
+                "confidence": confidence,
+                "image_b64": img_b64,
+                "probabilities": prob_list,
+                "classes": CLASSES,
+            }
+        )
 
     except Exception as e:
-        st.error(f"Error processing file: {e}")
+        return jsonify({"error": str(e)}), 500
 
     finally:
-        os.remove(tmp_path)
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
