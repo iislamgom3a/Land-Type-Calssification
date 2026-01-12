@@ -1,0 +1,31 @@
+Land Use & Land Cover Classification with EuroSAT
+
+> Background  
+
+This project was developed as part of the Digital Egypt Pioneers Initiative (DEPI) مبادرة رواد مصر الرقمية under the AI & Data Science track.  
+It represents the culmination of a 6-month intensive training program, combining advanced coursework with practical, real-world applications in artificial intelligence and data science.  
+
+> problem
+
+Land use and land cover (LULC) classification is critical for agriculture, urban planning, and environmental monitoring. Using Sentinel-2 imagery and the EuroSAT dataset , we frame the task as supervised multi-class image classification.  
+
+The model learns spectral + spatial patterns with CNNs (and experiments with ViTs) to automatically classify land cover types.
+
+
+> Applications  
+
+- Agriculture – crop health & yield  
+- Urban growth & real estate  
+- Transportation networks  
+- Energy & resource monitoring  
+- Environmental tracking  
+- Commercial & insurance analytics  
+
+> Contributors  
+
+- Islam Gomaa  
+- Menna Allah Ayman
+- Manar Saber  
+- Mina Emad  
+- Menna Alaa  
+- Abdelrahman Afify  
